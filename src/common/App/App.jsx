@@ -1,4 +1,8 @@
 import React, { Component } from "react";
+import Chooser from './Chooser';
+import RelatedArtists from './RelatedArtists';
+import MuiThemeProvider from 'material-ui/styles/MuiThemeProvider';
+
 import cls from "./App.css";
 require('./App.css');
 
@@ -8,12 +12,15 @@ class App extends Component {
     this.state = {
       text: "Hello World!",
       loggedIn: false,
-      display_name: undefined,
-      id: undefined,
-      email: undefined,
-      external_urls: { spotify: undefined },
-      href: undefined,
-      images: [{ url: undefined }]
+      user: {
+        display_name: undefined,
+        id: undefined,
+        email: undefined,
+        external_urls: { spotify: undefined },
+        href: undefined,
+        images: [{ url: undefined }],
+      },
+      playing: false
     };
   }
 
@@ -26,11 +33,6 @@ class App extends Component {
       alert('There was an error during the authentication');
     } else {
       if (access_token) {
-        // render oauth info
-        // oauthPlaceholder.innerHTML = oauthTemplate({
-        //   access_token: access_token,
-        //   refresh_token: refresh_token
-        // });
         const fetchOptions = {
           method: 'GET',
           headers: {
@@ -39,14 +41,13 @@ class App extends Component {
         };
         fetch('https://api.spotify.com/v1/me', fetchOptions).then((response) => response.json())
           .then((data) => {
-            const state = Object.assign(data, { loggedIn: true });
+            const state = { user: data, loggedIn: true, access_token: access_token, refresh_token: refresh_token };
             this.setState(state);
           })
       } else {
 
       }
     }
-
   }
 
   getHashParams = () => {
@@ -59,31 +60,40 @@ class App extends Component {
     return hashParams;
   }
 
-
+  updateState = stateObj => {
+    this.setState(stateObj);
+  }
   render() {
-    const { display_name, images, id, email, external_urls, href } = this.state;
+    const { display_name, images, id, email, external_urls, href } = this.state.user;
+    const { access_token, playing, startingArtist, currentArtist } = this.state;
     return (
-      <div>
-        <div id="login">
-          <h1>First, log in to spotify</h1>
-          <a href="/login">Log in</a>
+      <MuiThemeProvider>
+        <div>
+          {!this.state.loggedIn ?
+            <div id="login">
+              <h1>First, log in to spotify</h1>
+              <a href="/login">Log in</a>
+            </div>
+            :
+            <button onClick={() => this.setState({ playing: true })}>Let's go!</button>
+          }
+          {playing &&
+            <Chooser
+              updateParentState={this.updateState}
+              user={this.state.user}
+              access_token={access_token}
+            />
+          }
+          {startingArtist &&
+            <RelatedArtists
+              updateParentState={this.updateState}
+              access_token={access_token}
+              startingArtist={startingArtist}
+              currentArtist={currentArtist}
+            />}
+
         </div>
-        {this.state.loggedIn &&
-          <div>
-            <h1>Logged in as {display_name}</h1>
-            <img id="avatar" width="200" src={images[0].url} />
-            <dl>
-              <dt>Display name</dt><dd>{display_name}</dd>
-              <dt>Username</dt><dd>{id}</dd>
-              <dt>Email</dt><dd>{email}</dd>
-              <dt>Spotify URI</dt><dd><a href={external_urls.spotify}>{external_urls.spotify}</a></dd>
-              <dt>Link</dt><dd><a href={href}>{href}</a></dd>
-              <dt>Profile Image</dt><dd>{images[0].url}</dd>
-            </dl>
-            <p><a href="/">Log in again</a></p>
-          </div>
-        }
-      </div>
+      </MuiThemeProvider>
     );
   }
 }
