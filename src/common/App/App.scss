@@ -1,13 +1,6 @@
 :local(.title) {
   color: cornflowerblue;
 }
-/*#login {
-  display: none;
-}
-
-#loggedin {
-  display: none;
-}*/
 * {
   font-family: 'Roboto', sans-serif;
 }
@@ -16,4 +9,10 @@
   width: 100vw;
   flex-wrap: wrap;
   justify-content: space-between;
+}
+
+#navbar {
+  button {
+    height: 100%;
+  }
 }

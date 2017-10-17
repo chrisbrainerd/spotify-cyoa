@@ -1,169 +1,43 @@
-require("dotenv").config({ silent: true });
+'use strict';
 
-const express = require("express");
-const compression = require("compression");
-const path = require("path");
-const logger = require("./middleware/logger");
-const { devMiddleware, hotMiddleware } = require("./middleware/webpack");
+/** Module dependencies. */
+const express      = require('express');
+const bodyParser   = require('body-parser');
 const cookieParser = require('cookie-parser');
-const querystring = require('querystring');
-const request = require('request');
+const path         = require('path');
+const logger       = require('morgan');
+const routes       = require('./routes');
+const port = process.env.PORT || 8080;
+
+// configure the express server
 const app = express();
 
-const client_id = 'ff1aab853bf64c7e87a91f82621260fc'; // Your client id
-const client_secret = '795dd0cd2d5f4ffe99036ca79ca2a09c'; // Your secret
-const redirect_uri = 'http://localhost:8080/callback'; // Your redirect uri
-const scopes = 'user-read-private user-read-email'; // space-delimited spotify acct scopes
-let stateKey = 'spotify_auth_state';
+// if we're developing, use webpack middleware for module hot reloading
+if (process.env.NODE_ENV !== 'production') {
+  console.log('==> 🌎 using webpack');
 
+  // load and configure webpack
+  const webpack = require('webpack');
+  const webpackDevMiddleware = require('webpack-dev-middleware');
+  const webpackHotMiddleware = require('webpack-hot-middleware');
 
+  const config = require('../webpack/webpack.dev.config');
 
-app.set("x-powered-by", false);
-
-app.use(compression());
-app.use(logger);
-app.use(express.static(__dirname + '/public'))
-  .use(cookieParser());
-
-
-if (process.env.NODE_ENV === "production") {
-  app.use(express.static("build"));
-} else {
-  app.use(devMiddleware);
-  app.use(hotMiddleware);
+  // setup middleware
+  const compiler = webpack(config);
+  app.use(webpackDevMiddleware(compiler, { noInfo: true, publicPath: config.output.publicPath }));
+  app.use(webpackHotMiddleware(compiler));
 }
 
-var generateRandomString = function (length) {
-  var text = '';
-  var possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+app.set('port', port);
+app.use(logger('dev'))
+  .use(cookieParser())
+  .use(bodyParser.json())
+  .use(bodyParser.urlencoded({ extended: false }))
+  .use(express.static(path.resolve(__dirname, '../public')))
+  .use('/', routes);
 
-  for (var i = 0; i < length; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-};
-
-
-app.get("/", (req, res) => {
-  if (process.env.NODE_ENV === "production") {
-    res.sendFile(path.resolve("build", "index.html"));
-  } else {
-    res.write(devMiddleware.fileSystem.readFileSync(path.resolve("build", "index.html")));
-    res.end();
-  }
+// Start her up, boys
+app.listen(app.get('port'), () => {
+  console.log('Express server listening on port ' + app.get('port'));
 });
-app.get('/login', function (req, res) {
-
-  var state = generateRandomString(16);
-  res.cookie(stateKey, state);
-
-  // your application requests authorization
-  var scope = 'user-read-private user-read-email';
-  res.redirect('https://accounts.spotify.com/authorize?' +
-    querystring.stringify({
-      response_type: 'code',
-      client_id: client_id,
-      scope: scope,
-      redirect_uri: redirect_uri,
-      state: state
-    }));
-});
-
-app.get('/callback', function (req, res) {
-
-  // your application requests refresh and access tokens
-  // after checking the state parameter
-
-  var code = req.query.code || null;
-  var state = req.query.state || null;
-  var storedState = req.cookies ? req.cookies[stateKey] : null;
-
-  if (state === null || state !== storedState) {
-    res.redirect('/#' +
-      querystring.stringify({
-        error: 'state_mismatch'
-      }));
-  } else {
-    res.clearCookie(stateKey);
-    var authOptions = {
-      url: 'https://accounts.spotify.com/api/token',
-      form: {
-        code: code,
-        redirect_uri: redirect_uri,
-        grant_type: 'authorization_code'
-      },
-      headers: {
-        'Authorization': 'Basic ' + (new Buffer(client_id + ':' + client_secret).toString('base64'))
-      },
-      json: true
-    };
-
-    request.post(authOptions, function (error, response, body) {
-      if (!error && response.statusCode === 200) {
-
-        var access_token = body.access_token,
-          refresh_token = body.refresh_token;
-
-        var options = {
-          url: 'https://api.spotify.com/v1/me',
-          headers: { 'Authorization': 'Bearer ' + access_token },
-          json: true
-        };
-
-        // use the access token to access the Spotify Web API
-        request.get(options, function (error, response, body) {
-          console.log(body);
-        });
-
-        // we can also pass the token to the browser to make requests from there
-        res.redirect('/#' +
-          querystring.stringify({
-            access_token: access_token,
-            refresh_token: refresh_token
-          }));
-      } else {
-        res.redirect('/#' +
-          querystring.stringify({
-            error: 'invalid_token'
-          }));
-      }
-    });
-  }
-});
-
-app.get('/refresh_token', function (req, res) {
-
-  // requesting access token from refresh token
-  var refresh_token = req.query.refresh_token;
-  var authOptions = {
-    url: 'https://accounts.spotify.com/api/token',
-    headers: { 'Authorization': 'Basic ' + (new Buffer(client_id + ':' + client_secret).toString('base64')) },
-    form: {
-      grant_type: 'refresh_token',
-      refresh_token: refresh_token
-    },
-    json: true
-  };
-
-  request.post(authOptions, function (error, response, body) {
-    if (!error && response.statusCode === 200) {
-      var access_token = body.access_token;
-      res.send({
-        'access_token': access_token
-      });
-    }
-  });
-});
-
-
-
-
-
-const server = app.listen(process.env.PORT || 8080, () => {
-  console.log("Express started at http://localhost:%d\n", server.address().port);
-  if (process.env.NODE_ENV !== "production") {
-    console.log("Waiting for webpack...\n");
-  }
-});
-
-
